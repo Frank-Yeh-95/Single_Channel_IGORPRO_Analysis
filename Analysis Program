@@ -1,0 +1,710 @@
+#pragma TextEncoding = "UTF-8"
+#pragma rtGlobals=3				// Use modern global access method and strict wave access
+#pragma DefaultTab={3,20,4}		// Set default tab width in Igor Pro 9 and later
+#include <Global Fit 2>
+#include <Multipeak Fitting>
+
+Macro Po_determination_concat(ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels))
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, num_channels
+	
+	Prompt ca_dose, "What is the Ca dose?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage?"
+	Prompt voltage_increment, "What is the voltage increment?"
+	Prompt num_channels, "How many channels were in the patch?"
+	
+	Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels)
+	
+endMacro
+
+Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, num_channels
+	
+	variable voltage
+	SetDataFolder "root:'"+ca_dose+"':"
+	
+	variable num_sweeps= (ending_voltage-starting_voltage)/voltage_increment+1
+	variable sweep=0
+	
+	string Po_value_wave_name= ca_dose+"_Po_concat"
+		
+	if(!waveexists($Po_value_wave_name))
+		Make/N=(num_sweeps) /O $Po_value_wave_name
+		Setscale/P x starting_voltage, voltage_increment, $Po_value_wave_name
+	endif
+	
+	Wave Po_value_wave= $Po_value_wave_name
+	
+	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
+	
+//		Prompt leak_conductance, "What was the average leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+"in pS?"
+//		Prompt single_channel_gamma, "What was the average single channel conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" pS?"
+//	
+//		DoPrompt "Dialog", leak_conductance, single_channel_gamma
+		
+		Po_value_wave[sweep]= Po_from_concat(ca_dose, voltage, num_channels)
+		
+		sweep+=1
+	endfor
+	
+	Display Po_value_wave
+end
+
+Function Po_from_concat(ca_dose, voltage, num_channels)
+	string ca_dose
+	variable voltage, num_channels
+	
+	variable single_channel_gamma
+	
+//	Prompt leak_conductance, "What is the average leak conductance at "+num2str(voltage)+"mV?"
+	Prompt single_channel_gamma, "What is the average single channel conductance at "+num2str(voltage)+"mV in pS?"
+	Doprompt "dialog", single_channel_gamma
+	
+	string concat_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
+	wave concat_g_wave= $concat_g_wave_name
+	
+	variable time_elapsed= IndexToScale(concat_g_wave,numpnts(concat_g_wave),0)
+	
+	variable Po_value=area(concat_g_wave)
+//	variable leak_value=leak_conductance*10^-12 * time_elapsed
+	variable max_Po_value= num_channels*single_channel_gamma*10^-12 * time_elapsed
+	
+//	Po_value-=leak_value
+	
+	Po_value/=max_Po_value
+	
+	return Po_value
+
+end
+
+Macro trunc_concat_wave(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	Prompt ca_dose, "What is the Ca2+ dose?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage?"
+	Prompt voltage_increment, "What is the voltage increment?"
+	Prompt starting_iteration, "What is the starting iteration?"
+	Prompt ending_iteration, "What is the ending iteration?"
+	
+	string datafolder_name= "root:'"+ca_dose+"':"
+	
+	SetDataFolder $datafolder_name
+	
+	trunc_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	histogram_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment)
+end
+
+Function histogram_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment
+	
+	variable voltage
+	
+	for(voltage= starting_voltage; voltage<= ending_voltage; voltage+= voltage_increment)
+		string concat_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
+		string concat_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_concat_G_Hist"
+	
+		Histogram/B={-3e-10,2e-13,30000}/DEST=$concat_hist_wave_name $concat_wave_name
+		
+		Display $concat_hist_wave_name
+	endfor
+end
+
+
+Function trunc_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	variable voltage, iteration
+	
+	for(voltage= starting_voltage; voltage<= ending_voltage; voltage+= voltage_increment)
+		for(iteration= starting_iteration; iteration<= ending_iteration; iteration+=1)
+			variable leak_conductance
+			
+			prompt leak_conductance, "What is the leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" in S?"
+			Doprompt "Dialog", leak_conductance
+			
+			trunc_waves(ca_dose, voltage, iteration, leak_conductance)
+		endfor
+		
+		string concat_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
+		
+		//print wavelist(ca_dose+"_"+num2str(voltage)+"mV_G_trunc_*",";","")
+		
+		concatenate/NP/O wavelist(ca_dose+"_"+num2str(voltage)+"mV_G_trunc_*",";",""), $concat_g_wave_name
+		
+		Display $concat_g_wave_name
+	endfor
+	
+end
+
+Function trunc_waves(ca_dose, voltage, iteration, leak_conductance)
+	string ca_dose
+	variable voltage, iteration, leak_conductance
+	
+	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+	
+	wave g_wave= $g_wave_name
+	
+	string trunc_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_trunc_"+num2str(iteration)
+	
+	Duplicate/O/R=(0.015,0.255) g_wave, $trunc_g_wave_name
+	
+	wave trunc_g_wave= $trunc_g_wave_name
+	
+	trunc_g_wave-=leak_conductance
+End
+
+Macro Po_determination(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, num_channels)
+
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, num_channels
+	
+	Prompt ca_dose, "What is the Ca dosage?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage? (only increase from starting voltage)"
+	Prompt voltage_increment, "What is the voltage increment?"
+	Prompt num_channels, "How many channels were there in this patch?"
+	Prompt starting_iteration, "What is the starting iteration?"
+	Prompt ending_iteration, "What is the ending iteration?"
+	
+	//DoPrompt "Dialog", ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels, starting_iteration, ending_iteration
+	
+	Po_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels, starting_iteration, ending_iteration)
+
+endMacro
+
+
+Function Po_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, num_channels, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, num_channels, starting_iteration, ending_iteration
+	
+	variable voltage, iteration, leak_conductance, single_channel_gamma
+	SetDataFolder "root:'"+ca_dose+"':"
+	
+	variable num_sweeps= (ending_voltage-starting_voltage)/voltage_increment+1
+	variable sweep=0
+	
+	for(iteration=starting_iteration; iteration<=ending_iteration; iteration+=1)
+		string Po_value_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+		
+		if(!waveexists($Po_value_wave_name))
+			Make/N=(num_sweeps) /O $Po_value_wave_name
+			Setscale/P x starting_voltage, voltage_increment, $Po_value_wave_name
+		endif
+	endfor
+	
+	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
+	
+//		Prompt leak_conductance, "What was the average leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+"in pS?"
+//		Prompt single_channel_gamma, "What was the average single channel conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" pS?"
+//	
+//		DoPrompt "Dialog", leak_conductance, single_channel_gamma
+//					print num2str(voltage)
+		for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
+//			Po(ca_dose, voltage, iteration, num_channels, leak_conductance, single_channel_gamma, sweep)
+//			Po_automated_area(ca_dose, voltage, iteration, num_channels, sweep)
+			Po_automated_halfmax(ca_dose, voltage, iteration, num_channels, sweep)
+		endfor
+		
+		sweep+=1
+	endfor	
+end
+
+Function rescaling()
+	variable iteration=0
+	for(iteration=1; iteration<=25; iteration+=1)
+		string Po_value_wave_name= "85Ca_Po_"+num2str(iteration)
+		Setscale/P x -100, 20, "mV", $Po_value_wave_name
+	endfor
+end
+
+Function Po_automated_area(ca_dose, voltage, iteration, num_channels, sweep)
+	string ca_dose
+	variable voltage, iteration, num_channels, sweep
+	
+	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+	
+	string leak_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_leak"
+	string single_channel_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_singleG"
+	
+	wave leak_g_wave= $leak_g_wave_name
+	wave single_channel_g_wave= $single_channel_g_wave_name
+	
+	if(waveexists($g_wave_name))
+	
+		if(numtype(leak_g_wave[iteration-1])==0)
+			wave temp_wave= $g_wave_name
+			//temp_wave += leak_g_wave[iteration-1]
+			variable Po_value=area(temp_wave, 0.015, 0.255)
+			//display temp_wave
+			variable leak_value=leak_g_wave[iteration-1] * (0.255-0.015)
+			variable max_Po_value= num_channels*single_channel_g_wave[iteration-1] * (0.255-0.015)	
+		
+			print num2str(Po_value)
+	
+			Po_value/=max_Po_value
+	
+//			if(Po_value<(1/12251))
+//				Po_value=1/12251
+//			endif
+//			
+//			print num2str(voltage)
+//			print num2str(iteration)
+//	
+//			print num2str(Po_value)
+	
+			string Po_value_wave_name= ca_dose+"_Po_lo_"+num2str(iteration)
+	
+			Wave Po_value_wave= $Po_value_wave_name
+	
+			Po_value_wave[sweep]= Po_value
+		endif
+	endif
+end
+
+
+Function Po_automated_halfmax(ca_dose, voltage, iteration, num_channels, sweep)
+	string ca_dose
+	variable voltage, iteration, num_channels, sweep
+	
+	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+	
+	string leak_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_leak"
+	string single_channel_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_singleG"
+	
+	wave leak_g_wave= $leak_g_wave_name
+	wave single_channel_g_wave= $single_channel_g_wave_name
+	
+	if(waveexists($g_hist_wave_name) & waveexists(leak_g_wave) & waveexists(single_channel_g_wave))
+	
+		if(numtype(leak_g_wave[iteration-1])==0 & numtype(single_channel_g_wave[iteration-1])==0)
+			wave temp_wave= $g_hist_wave_name
+			
+			variable half_max= (single_channel_g_wave[iteration-1]+leak_g_wave[iteration-1])/2
+			variable prelim_Pc= sum(temp_wave, -Inf, half_max)
+			variable prelim_Po= sum(temp_wave, half_max, inf)
+			
+			variable Po_value= prelim_Po/(prelim_Pc+prelim_Po)
+			
+//			if(Po_value<(1/12251))
+//				Po_value=1/12251
+//			endif
+//			
+	
+			string Po_value_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+	
+			Wave Po_value_wave= $Po_value_wave_name
+	
+			Po_value_wave[sweep]= Po_value
+		endif
+	endif
+end
+
+
+Function Po_avg(ca_dose, start_voltage, end_voltage, voltage_increment, start_iteration, end_iteration)
+	string ca_dose
+	variable start_voltage, end_voltage, voltage_increment, start_iteration, end_iteration
+	
+	SetDataFolder "root:'"+ca_dose+"':"
+	
+	string Po_avg_name= ca_dose+"_Po_avg"
+	make/o/N=((end_voltage-start_voltage)/voltage_increment +1) $Po_avg_name
+	wave Po_avg_wave= $Po_avg_name
+	
+	setscale/p x, start_voltage, voltage_increment, "mV", Po_avg_wave
+	
+	variable voltage, iteration
+	
+	for(voltage=start_voltage;voltage<=end_voltage; voltage+=voltage_increment)
+		variable avg_voltage_counter, temp_Po, voltage_counter, viable_trace_counter
+		string Po_wave_name
+		
+		avg_voltage_counter= (voltage-start_voltage)/voltage_increment
+		
+		temp_Po=0
+		
+		viable_trace_counter=0
+
+		if(voltage<-100)
+			
+			voltage_counter= -(voltage+120)/voltage_increment
+			
+			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
+				Po_wave_name= ca_dose+"_Po_lo_"+num2str(iteration)
+				wave Po_wave= $Po_wave_name
+				
+				if(numtype(Po_wave[voltage_counter])==0)
+					temp_Po += Po_wave[voltage_counter]
+					viable_trace_counter+=1
+				endif			
+			endfor
+			
+			temp_Po/=viable_trace_counter
+			
+			Po_avg_wave[avg_voltage_counter]=temp_Po
+		endif
+
+		
+		//standard voltage protocol
+		if(voltage>=-100 && voltage<=100)
+			
+			voltage_counter= (voltage+100)/voltage_increment
+			
+			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
+				Po_wave_name= ca_dose+"_Po_"+num2str(iteration)
+				wave Po_wave= $Po_wave_name
+				
+				if(numtype(Po_wave[voltage_counter])==0)
+					temp_Po += Po_wave[voltage_counter]
+					viable_trace_counter+=1
+				endif			
+			endfor
+			
+			temp_Po/=viable_trace_counter
+			
+			Po_avg_wave[avg_voltage_counter]=temp_Po
+		endif
+		
+		
+		if(voltage>100)
+			
+			voltage_counter= (voltage-120)/voltage_increment
+			
+			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
+				Po_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+				wave Po_wave= $Po_wave_name
+				
+				if(numtype(Po_wave[voltage_counter])==0)
+					temp_Po += Po_wave[voltage_counter]
+					viable_trace_counter+=1
+				endif			
+			endfor
+			
+			temp_Po/=viable_trace_counter
+			
+			Po_avg_wave[avg_voltage_counter]=temp_Po
+		endif
+		
+	endfor
+	
+end
+
+
+
+Function Po(ca_dose, voltage, iteration, num_channels, leak_conductance, single_channel_gamma, sweep)
+	string ca_dose
+	variable voltage, iteration, num_channels, leak_conductance, single_channel_gamma, sweep
+
+	variable avoid_trace=0
+	
+	string g_wave= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+	
+	if(waveexists($g_wave))
+	
+		Prompt avoid_trace, "Avoid "+num2str(voltage)+"mV in iteration"+num2str(iteration)+"trace?"
+		Prompt leak_conductance, "What was the leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+"in pS?"
+		Prompt single_channel_gamma, "What was the single channel conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" pS?"
+	
+		DoPrompt "Dialog", avoid_trace, leak_conductance, single_channel_gamma
+	
+		if(avoid_trace==0)
+			variable Po_value=area($g_wave,0.015, 0.255)
+			variable leak_value=leak_conductance * (0.255-0.015)
+			variable max_Po_value= num_channels*single_channel_gamma * (0.255-0.015)
+	
+			Po_value-=leak_value
+	
+			Po_value/=max_Po_value
+	
+			if(Po_value<(1/12251))
+				Po_value=1/12251
+			endif
+	
+			print num2str(Po_value)
+	
+			string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
+	
+			Wave Po_value_wave= $Po_value_wave_name
+	
+			Po_value_wave[sweep]= Po_value
+		endif
+	endif
+end
+
+
+
+Macro Wave_rename_macro(series_name, group, starting_sweep, ending_sweep, ca_dose, starting_voltage, ending_voltage, increment, starting_iteration)
+	String series_name, ca_dose
+	Variable group, starting_sweep, ending_sweep, starting_voltage, ending_voltage, increment, starting_iteration
+	
+	Prompt series_name, "What is the series name from HEKA Patchmaster?"
+	Prompt ca_dose, "What is the Ca2+ dose?"
+	Prompt group, "What pipette group was this data from?"
+	Prompt starting_sweep, "What is the starting sweep?"
+	Prompt ending_sweep, "What is the ending sweep?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage?"
+	Prompt increment, "What is the voltage increment?"
+	Prompt starting_iteration, "Which iteration does this series start at?"
+	
+	Wave_Rename_Iterate(series_name, group, starting_sweep, ending_sweep, ca_dose, starting_voltage, ending_voltage, increment, starting_iteration)
+
+endMacro
+
+Function Wave_Rename_Iterate(series_name, group, starting_sweep, ending_sweep, ca_dose, starting_voltage, ending_voltage, increment, starting_iteration)
+	String series_name, ca_dose
+	Variable group, starting_sweep, ending_sweep, starting_voltage, ending_voltage, increment, starting_iteration
+	
+	variable voltage, iteration	
+	
+	for(iteration=1; iteration+starting_sweep-1<=ending_sweep; iteration+=1)
+		variable voltage_num=1
+		
+		if(starting_voltage<ending_voltage)
+			for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=increment)
+				Wave_Rename(series_name, group, iteration+starting_sweep-1, ca_dose, voltage, voltage_num,iteration+starting_iteration-1)
+				voltage_num+=1
+			endfor
+		else
+			for(voltage=starting_voltage; voltage>=ending_voltage; voltage-=increment)
+				Wave_Rename(series_name, group, iteration+starting_sweep-1, ca_dose, voltage, voltage_num,iteration+starting_iteration-1)
+				voltage_num+=1
+			endfor
+		endif
+	endfor
+
+End
+
+Function Wave_Rename(series_name, group, sweep, ca_dose, voltage, voltage_num, iteration)
+	String series_name, ca_dose
+	Variable group, sweep, voltage,voltage_num, iteration
+	String wave_name_current, wave_name_new
+	
+	wave_name_current= series_name+"_"+num2str(group)+"_"+num2str(sweep)+"_"+num2str(voltage_num)+"_1"
+	
+	//wave_name_current=  ca_dose+ "_"+ num2str(voltage)+ "mV_G_"+num2str(iteration)+"_Hist"
+	wave_name_new= ca_dose+ "_"+ num2str(voltage)+ "mV_"+num2str(iteration)
+	rename $wave_name_current, $wave_name_new
+	SetScale/P x 0,2e-05,"s",$wave_name_new
+End
+
+
+Macro gamma_determination(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	Prompt ca_dose, "What is the Ca dosage?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage? (only increase from starting voltage)"
+	Prompt voltage_increment, "What is the voltage increment?"
+	Prompt starting_iteration, "What is the starting iteration?"
+	Prompt ending_iteration, "What is the ending iteration?"
+
+	Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+
+endMacro
+
+Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	variable voltage, iteration, min_current_delta, min_conductance_delta, max_conductance
+	min_current_delta=15.6e-14
+	SetDataFolder "root:'"+ca_dose+"':"
+	
+	variable zeromV_avg=0
+	string g_zeromV_avg_wave_name= ca_dose+"_0mV_avg"
+	Make/O/N=(ending_iteration-starting_iteration+1) $g_zeromV_avg_wave_name
+	
+	Wave g_zeromV_avg_wave= $g_zeromV_avg_wave_name
+	
+	variable counter=0
+	
+	for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
+		string g_zeromV_wave_name= ca_dose+"_0mV_"+num2str(iteration)
+		
+		g_zeromV_avg_wave[counter]= mean($g_zeromV_wave_name, 0.015, 0.255)
+		
+		counter+=1
+	endfor
+	
+	zeromV_avg= mean(g_zeromV_avg_wave)
+	
+	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
+		if(voltage!=0)
+			min_conductance_delta=abs(min_current_delta/voltage * 1e3)*2.5
+		endif
+		max_conductance= round(1.2e-9/min_conductance_delta)
+		
+		for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
+
+			Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance)
+			
+	//		string i_wave_name= ca_dose+"_"+num2str(voltage)+"mV_"+num2str(iteration)
+			string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+			
+			if(iteration==starting_iteration)
+				Display $g_wave_name
+			else
+				AppendtoGraph $g_wave_name
+			endif
+			
+			setaxis bottom, 0.015, 0.255
+			setaxis/A=2 left 			
+			
+		endfor
+		
+		for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
+			string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+			
+			if(iteration==starting_iteration)
+				Display $g_hist_wave_name
+			else
+				AppendtoGraph $g_hist_wave_name
+			endif
+			
+			ModifyGraph rgb=(0,0,65535)
+			
+		endfor
+	endfor
+end
+
+Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance)
+	string ca_dose
+	variable voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance
+	
+	//i as in single channel current
+	string i_wave_name= ca_dose+"_"+num2str(voltage)+"mV_"+num2str(iteration)
+	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+	
+	if(waveexists($i_wave_name))
+	
+		Duplicate/O $i_wave_name, $g_wave_name
+	
+		Wave g_wave= $g_wave_name
+		
+		g_wave-= zeromV_avg
+	
+		g_wave=g_wave/(voltage/1000)
+		
+		SetScale d, 0, 0, "S", g_wave
+	
+		//Display g_wave
+		//setaxis bottom, 0.015, 0.255
+
+		string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+		
+	
+		Histogram/R=(0.015,0.255)/B={-2e-10,min_conductance_delta,max_conductance}/DEST=$g_hist_wave_name g_wave
+	
+		//Display $g_hist_wave_name
+		
+		//ModifyGraph rgb=(0,0,65535)
+		
+	endif
+end
+
+
+Function leak_conductance(ca_dose, voltage, iteration)
+	string ca_dose
+	variable voltage, iteration
+	
+	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+	
+	string leak_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_leak"
+	wave leak_g_wave= $leak_g_wave_name
+	
+	variable min_leak=wavemin($g_wave_name, 0.015, 0.255)
+	wavestats/R=(min_leak,min_leak+300e-12) $g_hist_wave_name
+
+end
+
+
+Macro KillGraphs()
+	KillAllGraphs()
+endMacro
+
+Function KillAllGraphs()
+   string fulllist = WinList("*", ";","WIN:1")
+   string name, cmd
+   variable i
+ 
+   for(i=0; i<itemsinlist(fulllist); i +=1)
+       name= stringfromlist(i, fulllist)
+       sprintf  cmd, "Dowindow/K %s", name
+       execute cmd   
+   endfor
+end
+
+Macro Shownext(ca_dose, voltage, g_graph_num, iteration)
+	string ca_dose
+	variable voltage, g_graph_num, iteration
+	
+	string g_wave="'"+ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)+"'"
+	string hist_wave_name="'"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
+	string hist_wave_fit_name="'fit_"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
+//	Wave hist_wave= $hist_wave_name
+	string g_graph= "Graph"+num2str(g_graph_num)
+	string hist_graph= "Graph"+num2str(g_graph_num+1)
+	
+	movewindow /w=$g_graph 1,1,1,1;
+	showinfo /w=$g_graph
+	movewindow /w=$hist_graph 1,1,1,1;
+	showinfo /w=$hist_graph
+
+	modifygraph/W=$g_graph hidetrace=1;	
+	modifygraph/W=$g_graph hidetrace($g_wave)=0;
+	setaxis/W=$g_graph bottom 0.015,0.255;
+	SetAxis/W=$g_graph/A=2 left 0,*
+	modifygraph/W=$hist_graph hidetrace=1;
+	modifygraph/W=$hist_graph hidetrace($hist_wave_name)=0;
+	modifygraph/W=$hist_graph hidetrace($hist_wave_fit_name)=0;
+	setaxis/W=$hist_graph/A=2 bottom -200e-12,400e-12;
+	
+//	CurveFit/H="1000"/Q/M=2/W=0/TBOX=(0x3e0) gauss, $hist_wave_name[pcsr(A),pcsr(B)]/D;
+endMacro
+
+Macro FitIt()
+	string/g trace_name
+	
+	fitit_fxn(trace_name)
+endMacro
+
+function fitit_fxn(trace_name)
+	string trace_name
+	
+	Display $trace_name
+	
+	Wave current_trace= $trace_name
+	Wave coefficients= $"W_coef"
+	
+	K0=0;
+	CurveFit/Q/H="1000"/M=2/W=0 gauss, current_trace[pcsr(A), pcsr(B)]/D;
+	print num2str(coefficients(2))
+end
+
+Function Boltzmann(w,V) : FitFunc
+	Wave w
+	Variable V
+
+	//CurveFitDialog/ These comments were created by the Curve Fitting dialog. Altering them will
+	//CurveFitDialog/ make the function less convenient to work with in the Curve Fitting dialog.
+	//CurveFitDialog/ Equation:
+	//CurveFitDialog/ f(V) = 1/(1 + exp(-z*1.602176634*10^-19 *(V-Vh)*10^-3/(1.380649*10^-23*293)))
+	//CurveFitDialog/ End of Equation
+	//CurveFitDialog/ Independent Variables 1
+	//CurveFitDialog/ V
+	//CurveFitDialog/ Coefficients 2
+	//CurveFitDialog/ w[0] = z
+	//CurveFitDialog/ w[1] = Vh
+
+	return 1/(1 + exp(-w[0]*1.602176634*10^-19 *(V-w[1])*10^-3/(1.380649*10^-23*293)))
+End
+
