@@ -190,7 +190,7 @@ Function Po_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment
 	variable sweep=0
 	
 	for(iteration=starting_iteration; iteration<=ending_iteration; iteration+=1)
-		string Po_value_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+		string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
 		
 		if(!waveexists($Po_value_wave_name))
 			Make/N=(num_sweeps) /O $Po_value_wave_name
@@ -296,7 +296,7 @@ Function Po_automated_halfmax(ca_dose, voltage, iteration, num_channels, sweep)
 //			endif
 //			
 	
-			string Po_value_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+			string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
 	
 			Wave Po_value_wave= $Po_value_wave_name
 	
@@ -330,12 +330,12 @@ Function Po_avg(ca_dose, start_voltage, end_voltage, voltage_increment, start_it
 		
 		viable_trace_counter=0
 
-		if(voltage<-100)
+		if(voltage<00)
 			
-			voltage_counter= -(voltage+120)/voltage_increment
+			voltage_counter= (voltage+200)/voltage_increment
 			
 			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
-				Po_wave_name= ca_dose+"_Po_lo_"+num2str(iteration)
+				Po_wave_name= ca_dose+"_Po_"+num2str(iteration)
 				wave Po_wave= $Po_wave_name
 				
 				if(numtype(Po_wave[voltage_counter])==0)
@@ -373,10 +373,10 @@ Function Po_avg(ca_dose, start_voltage, end_voltage, voltage_increment, start_it
 		
 		if(voltage>100)
 			
-			voltage_counter= (voltage-120)/voltage_increment
+			voltage_counter= (voltage+100)/voltage_increment
 			
 			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
-				Po_wave_name= ca_dose+"_Po_hi_"+num2str(iteration)
+				Po_wave_name= ca_dose+"_Po_"+num2str(iteration)
 				wave Po_wave= $Po_wave_name
 				
 				if(numtype(Po_wave[voltage_counter])==0)
@@ -494,10 +494,10 @@ Function Wave_Rename(series_name, group, sweep, ca_dose, voltage, voltage_num, i
 End
 
 
-Macro gamma_determination(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+Macro gamma_determination(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, ending_time)
 
 	string ca_dose
-	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, ending_time
 	
 	Prompt ca_dose, "What is the Ca dosage?"
 	Prompt starting_voltage, "What is the starting voltage?"
@@ -505,14 +505,15 @@ Macro gamma_determination(ca_dose, starting_voltage, ending_voltage, voltage_inc
 	Prompt voltage_increment, "What is the voltage increment?"
 	Prompt starting_iteration, "What is the starting iteration?"
 	Prompt ending_iteration, "What is the ending iteration?"
+	Prompt ending_time, "What is the time at the end of pulse? (s)"
 
-	Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, ending_time)
 
 endMacro
 
-Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, ending_time)
 	string ca_dose
-	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, ending_time
 	
 	variable voltage, iteration, min_current_delta, min_conductance_delta, max_conductance
 	min_current_delta=15.6e-14
@@ -544,7 +545,7 @@ Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, volta
 		
 		for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
 
-			Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance)
+			Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance, ending_time)
 			
 	//		string i_wave_name= ca_dose+"_"+num2str(voltage)+"mV_"+num2str(iteration)
 			string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
@@ -555,7 +556,7 @@ Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, volta
 				AppendtoGraph $g_wave_name
 			endif
 			
-			setaxis bottom, 0.015, 0.255
+			setaxis bottom, 0.015, ending_time
 			setaxis/A=2 left 			
 			
 		endfor
@@ -575,9 +576,9 @@ Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	endfor
 end
 
-Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance)
+Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance, ending_time)
 	string ca_dose
-	variable voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance
+	variable voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance, ending_time
 	
 	//i as in single channel current
 	string i_wave_name= ca_dose+"_"+num2str(voltage)+"mV_"+num2str(iteration)
@@ -601,7 +602,7 @@ Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min
 		string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
 		
 	
-		Histogram/R=(0.015,0.255)/B={-2e-10,min_conductance_delta,max_conductance}/DEST=$g_hist_wave_name g_wave
+		Histogram/R=(0.015,ending_time)/B={-2e-10,min_conductance_delta,max_conductance}/DEST=$g_hist_wave_name g_wave
 	
 		//Display $g_hist_wave_name
 		
@@ -643,16 +644,24 @@ Function KillAllGraphs()
    endfor
 end
 
-Macro Shownext(ca_dose, voltage, g_graph_num, iteration)
+Macro Shownext(ca_dose, voltage, g_graph_num, iteration, ending_time)
 	string ca_dose
-	variable voltage, g_graph_num, iteration
+	variable voltage, g_graph_num, iteration, ending_time
 	
+	shownextfxn(ca_dose, voltage, g_graph_num, iteration, ending_time)
+	
+endMacro
+
+Function shownextfxn(ca_dose, voltage, g_graph_num, iteration, ending_time)
+	string ca_dose
+	variable voltage, g_graph_num, iteration, ending_time
+	
+	string g_graph= "Graph"+num2str(g_graph_num)
+	string hist_graph= "Graph"+num2str(g_graph_num+1)
 	string g_wave="'"+ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)+"'"
 	string hist_wave_name="'"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
 	string hist_wave_fit_name="'fit_"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
-//	Wave hist_wave= $hist_wave_name
-	string g_graph= "Graph"+num2str(g_graph_num)
-	string hist_graph= "Graph"+num2str(g_graph_num+1)
+	Wave hist_wave= $hist_wave_name
 	
 	movewindow /w=$g_graph 1,1,1,1;
 	showinfo /w=$g_graph
@@ -661,15 +670,78 @@ Macro Shownext(ca_dose, voltage, g_graph_num, iteration)
 
 	modifygraph/W=$g_graph hidetrace=1;	
 	modifygraph/W=$g_graph hidetrace($g_wave)=0;
-	setaxis/W=$g_graph bottom 0.015,0.255;
+	setaxis/W=$g_graph bottom 0.015,ending_time;
 	SetAxis/W=$g_graph/A=2 left 0,*
 	modifygraph/W=$hist_graph hidetrace=1;
 	modifygraph/W=$hist_graph hidetrace($hist_wave_name)=0;
-	modifygraph/W=$hist_graph hidetrace($hist_wave_fit_name)=0;
+//	modifygraph/W=$hist_graph hidetrace($hist_wave_fit_name)=0;
 	setaxis/W=$hist_graph/A=2 bottom -200e-12,400e-12;
 	
-//	CurveFit/H="1000"/Q/M=2/W=0/TBOX=(0x3e0) gauss, $hist_wave_name[pcsr(A),pcsr(B)]/D;
-endMacro
+//	Make/N=4/O $"W_coef"
+//	Wave coefficients= $"W_coef"
+//
+//	K0=0;
+//	
+//	print num2str(hist_wave[pcsr(A)])
+//	
+//	CurveFit/H="1000"/W=2 gauss, kwCWave=coefficients, hist_wave[pcsr(A),pcsr(B)]/D;
+//	print num2str(coefficients[2]);
+end
+
+Function Shownextfxn1(ca_dose, voltage, g_graph_num, starting_iteration,ending_iteration ending_time)
+	string ca_dose
+	variable voltage, g_graph_num, starting_iteration,ending_iteration, ending_time
+	
+	variable iteration
+	string g_graph= "Graph"+num2str(g_graph_num)
+	string hist_graph= "Graph"+num2str(g_graph_num+1)
+	
+	for(iteration=starting_iteration; iteration<=ending_iteration; iteration+=1)
+		string g_wave="'"+ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)+"'"
+		string hist_wave_name="'"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
+		string hist_wave_fit_name="'fit_"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"'"
+		Wave hist_wave= $hist_wave_name
+		
+		movewindow /w=$g_graph 1,1,1,1;
+		showinfo /w=$g_graph
+		movewindow /w=$hist_graph 1,1,1,1;
+		showinfo /w=$hist_graph
+	
+		modifygraph/W=$g_graph hidetrace=1;	
+		modifygraph/W=$g_graph hidetrace($g_wave)=0;
+		setaxis/W=$g_graph bottom 0.015,ending_time;
+		SetAxis/W=$g_graph/A=2 left 0,*
+		modifygraph/W=$hist_graph hidetrace=1;
+		modifygraph/W=$hist_graph hidetrace($hist_wave_name)=0;
+		if(waveexists($hist_wave_fit_name))
+			modifygraph/W=$hist_graph hidetrace($hist_wave_fit_name)=0;
+		endif
+		setaxis/W=$hist_graph/A=2 bottom -200e-12,400e-12;
+		
+		Make/N=4/O $"W_coef"
+		Wave coefficients= $"W_coef"
+	
+		K0=0;
+		CurveFit/H="1000"/W=2 gauss, kwCWave=coefficients, hist_wave[pcsr(A),pcsr(B)]/D;
+		print num2str(coefficients[2]);
+		
+		NewPanel /K=2 /W=(187,368,437,531) as "Pause for Cursor"
+		DoWindow/C tmp_PauseforCursor					// Set to an unlikely name
+		AutoPositionWindow/E/M=1/R=$hist_graph			// Put panel near the graph
+		DrawText 21,20,"Adjust the cursors and then"
+		DrawText 21,40,"Click Continue."
+		Button button0,pos={80,58},size={92,20},title="Continue"
+		Button button0,proc=UserCursorAdjust_ContButtonProc	
+			
+		pauseforuser tmp_PauseforCursor, $hist_graph
+	endfor
+end
+
+Function UserCursorAdjust_ContButtonProc(ctrlName) : ButtonControl
+	String ctrlName
+
+	KillWindow/Z tmp_PauseforCursor				// Kill self
+End
 
 Macro FitIt()
 	string/g trace_name
