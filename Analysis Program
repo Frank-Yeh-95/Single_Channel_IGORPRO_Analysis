@@ -37,14 +37,39 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	
 	Wave Po_value_wave= $Po_value_wave_name
 	
+	
+	string leak_conductance_wave_name= ca_dose+"_leak_concat"
+	
+	if(!waveexists($leak_conductance_wave_name))
+		Make/N=(num_sweeps) /O $leak_conductance_wave_name
+		Setscale/P x starting_voltage, voltage_increment, $leak_conductance_wave_name
+		Edit/K=0/N=Leak $leak_conductance_wave_name
+		PauseforUser $"Leak"
+	endif
+	
+	Wave leak_conductance_wave= $leak_conductance_wave_name
+	
+	
+	string single_channel_gamma_wave_name= ca_dose+"_single_channel_gamma_concat"
+	
+	if(!waveexists($single_channel_gamma_wave_name))
+		Make/N=(num_sweeps) /O $single_channel_gamma_wave_name
+		Setscale/P x starting_voltage, voltage_increment, $single_channel_gamma_wave_name
+		Edit/K=0/N=singleG $single_channel_gamma_wave_name
+		PauseforUser $"singleG"
+	endif
+	
+	Wave single_channel_gamma_wave= $single_channel_gamma_wave_name
+	
+	
+	variable leak, single_g
+	
 	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
 	
-//		Prompt leak_conductance, "What was the average leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+"in pS?"
-//		Prompt single_channel_gamma, "What was the average single channel conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" pS?"
-//	
-//		DoPrompt "Dialog", leak_conductance, single_channel_gamma
+		leak= leak_conductance_wave[sweep]
+		single_g= single_channel_gamma_wave[sweep]
 		
-		Po_value_wave[sweep]= Po_from_concat(ca_dose, voltage, num_channels)
+		Po_value_wave[sweep]= Po_from_concat(ca_dose, voltage, num_channels, leak, single_g)
 		
 		sweep+=1
 	endfor
@@ -52,30 +77,29 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	Display Po_value_wave
 end
 
-Function Po_from_concat(ca_dose, voltage, num_channels)
+Function Po_from_concat(ca_dose, voltage, num_channels, leak_conductance, single_channel_gamma)
 	string ca_dose
-	variable voltage, num_channels
+	variable voltage, num_channels, leak_conductance, single_channel_gamma
 	
-	variable single_channel_gamma
+	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat"
 	
-//	Prompt leak_conductance, "What is the average leak conductance at "+num2str(voltage)+"mV?"
-	Prompt single_channel_gamma, "What is the average single channel conductance at "+num2str(voltage)+"mV in pS?"
-	Doprompt "dialog", single_channel_gamma
-	
-	string concat_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
-	wave concat_g_wave= $concat_g_wave_name
-	
-	variable time_elapsed= IndexToScale(concat_g_wave,numpnts(concat_g_wave),0)
-	
-	variable Po_value=area(concat_g_wave)
-//	variable leak_value=leak_conductance*10^-12 * time_elapsed
-	variable max_Po_value= num_channels*single_channel_gamma*10^-12 * time_elapsed
-	
-//	Po_value-=leak_value
-	
-	Po_value/=max_Po_value
-	
-	return Po_value
+	if(waveexists($g_hist_wave_name))
+
+		wave temp_wave= $g_hist_wave_name
+		
+		variable half_max= (single_channel_gamma)/2 +leak_conductance
+		variable prelim_Pc= sum(temp_wave, -Inf, half_max)
+		variable prelim_Po= sum(temp_wave, half_max, inf)
+		
+		variable Po_value= prelim_Po/(prelim_Pc+prelim_Po)
+		
+//			if(Po_value<(1/12251))
+//				Po_value=1/12251
+//			endif
+//			
+
+		return Po_value
+	endif
 
 end
 
@@ -223,6 +247,8 @@ Function rescaling()
 	endfor
 end
 
+
+
 Function Po_automated_area(ca_dose, voltage, iteration, num_channels, sweep)
 	string ca_dose
 	variable voltage, iteration, num_channels, sweep
@@ -353,7 +379,8 @@ Function Po_avg(ca_dose, start_voltage, end_voltage, voltage_increment, start_it
 		//standard voltage protocol
 		if(voltage>=-100 && voltage<=100)
 			
-			voltage_counter= (voltage+100)/voltage_increment
+			//voltage_counter= (voltage+100)/voltage_increment
+			voltage_counter= 0
 			
 			for(iteration=start_iteration;iteration<=end_iteration; iteration+=1)
 				Po_wave_name= ca_dose+"_Po_"+num2str(iteration)
@@ -590,7 +617,7 @@ Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min
 	
 		Wave g_wave= $g_wave_name
 		
-		g_wave-= zeromV_avg
+//		g_wave-= zeromV_avg
 	
 		g_wave=g_wave/(voltage/1000)
 		
@@ -611,6 +638,59 @@ Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min
 	endif
 end
 
+Macro Hist_concat_macro(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	Prompt ca_dose, "What is the Ca dosage?"
+	Prompt starting_voltage, "What is the starting voltage?"
+	Prompt ending_voltage, "What is the ending voltage? (only increase from starting voltage)"
+	Prompt voltage_increment, "What is the voltage increment?"
+	Prompt starting_iteration, "What is the starting iteration?"
+	Prompt ending_iteration, "What is the ending iteration?" 
+
+	Hist_concat_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+
+endmacro
+
+
+Function Hist_concat_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
+	string ca_dose
+	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
+	
+	SetDataFolder "root:'"+ca_dose+"':"
+	
+	variable voltage
+	
+	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
+		Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration)
+	endfor
+	
+end
+
+
+Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration)
+	string ca_dose
+	variable voltage, starting_iteration, ending_iteration
+	
+	variable iteration
+	string g_hist_concat_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat"
+	
+	string g_hist_first_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(starting_iteration)
+	
+	duplicate/o $g_hist_first_wave_name, $g_hist_concat_wave_name
+	
+	Wave g_hist_concat_wave= $g_hist_concat_wave_name
+	
+	for(iteration=starting_iteration+1; iteration<=ending_iteration; iteration+=1)
+		string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+		
+		wave g_hist_wave= $g_hist_wave_name
+		
+		g_hist_concat_wave+= g_hist_wave
+	endfor
+
+end
 
 Function leak_conductance(ca_dose, voltage, iteration)
 	string ca_dose
