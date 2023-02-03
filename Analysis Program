@@ -40,11 +40,19 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	
 	string leak_conductance_wave_name= ca_dose+"_leak_concat"
 	
-	if(!waveexists($leak_conductance_wave_name))
+	if(!waveexists($leak_conductance_wave_name))		
 		Make/N=(num_sweeps) /O $leak_conductance_wave_name
 		Setscale/P x starting_voltage, voltage_increment, $leak_conductance_wave_name
 		Edit/K=0/N=Leak $leak_conductance_wave_name
-		PauseforUser $"Leak"
+		
+		NewPanel /K=2 /W=(187,368,437,531) as "Pause for Cursor"
+		DoWindow/C tmp_PauseforCursor
+		DrawText 21,20,"Adjust the cursors and then"
+		DrawText 21,40,"Click Continue."
+		Button button0,pos={80,58},size={92,20},title="Continue"
+		Button button0,proc=UserCursorAdjust_ContButtonProc
+		
+		PauseforUser tmp_PauseforCursor,$"Leak"
 	endif
 	
 	Wave leak_conductance_wave= $leak_conductance_wave_name
@@ -56,7 +64,15 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 		Make/N=(num_sweeps) /O $single_channel_gamma_wave_name
 		Setscale/P x starting_voltage, voltage_increment, $single_channel_gamma_wave_name
 		Edit/K=0/N=singleG $single_channel_gamma_wave_name
-		PauseforUser $"singleG"
+
+		NewPanel /K=2 /W=(187,368,437,531) as "Pause for Cursor"
+		DoWindow/C tmp_PauseforCursor
+		DrawText 21,20,"Adjust the cursors and then"
+		DrawText 21,40,"Click Continue."
+		Button button0,pos={80,58},size={92,20},title="Continue"
+		Button button0,proc=UserCursorAdjust_ContButtonProc
+		
+		PauseforUser tmp_PauseforCursor,$"singleG"
 	endif
 	
 	Wave single_channel_gamma_wave= $single_channel_gamma_wave_name
@@ -77,6 +93,15 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	Display Po_value_wave
 end
 
+
+Function UserCursorAdjust_ContButtonProc(ctrlName) : ButtonControl
+	String ctrlName
+
+	KillWindow/Z tmp_PauseforCursor				// Kill self
+End
+
+
+
 Function Po_from_concat(ca_dose, voltage, num_channels, leak_conductance, single_channel_gamma)
 	string ca_dose
 	variable voltage, num_channels, leak_conductance, single_channel_gamma
@@ -87,101 +112,33 @@ Function Po_from_concat(ca_dose, voltage, num_channels, leak_conductance, single
 
 		wave temp_wave= $g_hist_wave_name
 		
-		variable half_max= (single_channel_gamma)/2 +leak_conductance
-		variable prelim_Pc= sum(temp_wave, -Inf, half_max)
-		variable prelim_Po= sum(temp_wave, half_max, inf)
-		
-		variable Po_value= prelim_Po/(prelim_Pc+prelim_Po)
-		
-//			if(Po_value<(1/12251))
-//				Po_value=1/12251
-//			endif
-//			
+		variable counter
+		variable half_max= (single_channel_gamma)/2 
 
+		variable prelim_Po=0
+		variable half_max_level=half_max+leak_conductance
+		
+		for(counter=1; counter<=num_channels; counter+=1)
+			
+			if(counter!=num_channels)
+				prelim_Po+=sum(temp_wave, half_max_level, half_max_level+single_channel_gamma)*counter
+			
+				half_max_level+=single_channel_gamma
+			else
+				prelim_Po+=sum(temp_wave, half_max_level, Inf)*counter
+			endif
+
+		endfor
+		
+		variable total_P= sum(temp_wave,-inf,inf)*num_channels
+		
+		variable Po_value= prelim_Po/total_P
+		
 		return Po_value
 	endif
 
 end
 
-Macro trunc_concat_wave(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
-	string ca_dose
-	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
-	
-	Prompt ca_dose, "What is the Ca2+ dose?"
-	Prompt starting_voltage, "What is the starting voltage?"
-	Prompt ending_voltage, "What is the ending voltage?"
-	Prompt voltage_increment, "What is the voltage increment?"
-	Prompt starting_iteration, "What is the starting iteration?"
-	Prompt ending_iteration, "What is the ending iteration?"
-	
-	string datafolder_name= "root:'"+ca_dose+"':"
-	
-	SetDataFolder $datafolder_name
-	
-	trunc_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
-	histogram_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment)
-end
-
-Function histogram_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment)
-	string ca_dose
-	variable starting_voltage, ending_voltage, voltage_increment
-	
-	variable voltage
-	
-	for(voltage= starting_voltage; voltage<= ending_voltage; voltage+= voltage_increment)
-		string concat_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
-		string concat_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_concat_G_Hist"
-	
-		Histogram/B={-3e-10,2e-13,30000}/DEST=$concat_hist_wave_name $concat_wave_name
-		
-		Display $concat_hist_wave_name
-	endfor
-end
-
-
-Function trunc_concat_waves_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration)
-	string ca_dose
-	variable starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration
-	
-	variable voltage, iteration
-	
-	for(voltage= starting_voltage; voltage<= ending_voltage; voltage+= voltage_increment)
-		for(iteration= starting_iteration; iteration<= ending_iteration; iteration+=1)
-			variable leak_conductance
-			
-			prompt leak_conductance, "What is the leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" in S?"
-			Doprompt "Dialog", leak_conductance
-			
-			trunc_waves(ca_dose, voltage, iteration, leak_conductance)
-		endfor
-		
-		string concat_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_concat"
-		
-		//print wavelist(ca_dose+"_"+num2str(voltage)+"mV_G_trunc_*",";","")
-		
-		concatenate/NP/O wavelist(ca_dose+"_"+num2str(voltage)+"mV_G_trunc_*",";",""), $concat_g_wave_name
-		
-		Display $concat_g_wave_name
-	endfor
-	
-end
-
-Function trunc_waves(ca_dose, voltage, iteration, leak_conductance)
-	string ca_dose
-	variable voltage, iteration, leak_conductance
-	
-	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
-	
-	wave g_wave= $g_wave_name
-	
-	string trunc_g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_trunc_"+num2str(iteration)
-	
-	Duplicate/O/R=(0.015,0.255) g_wave, $trunc_g_wave_name
-	
-	wave trunc_g_wave= $trunc_g_wave_name
-	
-	trunc_g_wave-=leak_conductance
-End
 
 Macro Po_determination(ca_dose, starting_voltage, ending_voltage, voltage_increment, starting_iteration, ending_iteration, num_channels)
 
@@ -239,13 +196,6 @@ Function Po_iterate(ca_dose, starting_voltage, ending_voltage, voltage_increment
 	endfor	
 end
 
-Function rescaling()
-	variable iteration=0
-	for(iteration=1; iteration<=25; iteration+=1)
-		string Po_value_wave_name= "85Ca_Po_"+num2str(iteration)
-		Setscale/P x -100, 20, "mV", $Po_value_wave_name
-	endfor
-end
 
 
 
@@ -309,17 +259,32 @@ Function Po_automated_halfmax(ca_dose, voltage, iteration, num_channels, sweep)
 	if(waveexists($g_hist_wave_name) & waveexists(leak_g_wave) & waveexists(single_channel_g_wave))
 	
 		if(numtype(leak_g_wave[iteration-1])==0 & numtype(single_channel_g_wave[iteration-1])==0)
+			
 			wave temp_wave= $g_hist_wave_name
+			variable single_channel_gamma= single_channel_g_wave[iteration-1]
+			variable leak_conductance= leak_g_wave[iteration-1]
 			
-			variable half_max= (single_channel_g_wave[iteration-1]+leak_g_wave[iteration-1])/2
-			variable prelim_Pc= sum(temp_wave, -Inf, half_max)
-			variable prelim_Po= sum(temp_wave, half_max, inf)
+			variable counter
+			variable half_max= (single_channel_gamma)/2 
+	
+			variable prelim_Po=0
+			variable half_max_level=half_max+leak_conductance
 			
-			variable Po_value= prelim_Po/(prelim_Pc+prelim_Po)
+			for(counter=1; counter<=num_channels; counter+=1)
+				
+				if(counter!=num_channels)
+					prelim_Po+=sum(temp_wave, half_max_level, half_max_level+single_channel_gamma)*counter
+				
+					half_max_level+=single_channel_gamma
+				else
+					prelim_Po+=sum(temp_wave, half_max_level, Inf)*counter
+				endif
+	
+			endfor
 			
-//			if(Po_value<(1/12251))
-//				Po_value=1/12251
-//			endif
+			variable total_P= sum(temp_wave,-inf,inf)*num_channels
+			
+			variable Po_value= prelim_Po/total_P
 //			
 	
 			string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
@@ -422,45 +387,12 @@ Function Po_avg(ca_dose, start_voltage, end_voltage, voltage_increment, start_it
 end
 
 
-
-Function Po(ca_dose, voltage, iteration, num_channels, leak_conductance, single_channel_gamma, sweep)
-	string ca_dose
-	variable voltage, iteration, num_channels, leak_conductance, single_channel_gamma, sweep
-
-	variable avoid_trace=0
-	
-	string g_wave= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
-	
-	if(waveexists($g_wave))
-	
-		Prompt avoid_trace, "Avoid "+num2str(voltage)+"mV in iteration"+num2str(iteration)+"trace?"
-		Prompt leak_conductance, "What was the leak conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+"in pS?"
-		Prompt single_channel_gamma, "What was the single channel conductance at "+num2str(voltage)+"mV in iteration "+num2str(iteration)+" pS?"
-	
-		DoPrompt "Dialog", avoid_trace, leak_conductance, single_channel_gamma
-	
-		if(avoid_trace==0)
-			variable Po_value=area($g_wave,0.015, 0.255)
-			variable leak_value=leak_conductance * (0.255-0.015)
-			variable max_Po_value= num_channels*single_channel_gamma * (0.255-0.015)
-	
-			Po_value-=leak_value
-	
-			Po_value/=max_Po_value
-	
-			if(Po_value<(1/12251))
-				Po_value=1/12251
-			endif
-	
-			print num2str(Po_value)
-	
-			string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
-	
-			Wave Po_value_wave= $Po_value_wave_name
-	
-			Po_value_wave[sweep]= Po_value
-		endif
-	endif
+Function rescaling()
+	variable iteration=0
+	for(iteration=1; iteration<=25; iteration+=1)
+		string Po_value_wave_name= "85Ca_Po_"+num2str(iteration)
+		Setscale/P x -100, 20, "mV", $Po_value_wave_name
+	endfor
 end
 
 
@@ -660,34 +592,62 @@ Function Hist_concat_iterate(ca_dose, starting_voltage, ending_voltage, voltage_
 	
 	SetDataFolder "root:'"+ca_dose+"':"
 	
+	string skip_iterations=""
 	variable voltage
 	
 	for(voltage=starting_voltage; voltage<=ending_voltage; voltage+=voltage_increment)
-		Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration)
+		
+		Prompt skip_iterations, "What iterations to skip for "+num2str(voltage)+" mv?"
+		DoPrompt "dialog", skip_iterations
+		
+		variable num_skip_iterations=itemsinlist(skip_iterations,";")
+		
+		Make/O/T/N=(num_skip_iterations) skip_iteration_strwave
+		skip_iteration_strwave= stringfromlist(p, skip_iterations,";")
+		
+		Make/O/N=(num_skip_iterations) skip_iteration_wave
+		
+		skip_iteration_wave[]=str2num(skip_iteration_strwave[p])
+		
+		Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration, skip_iteration_wave)
 	endfor
+	
+//	KillWaves skip_iteration_strwave, skip_iteration_wave
 	
 end
 
 
-Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration)
+Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration, skip_iteration_wave)
 	string ca_dose
 	variable voltage, starting_iteration, ending_iteration
+	wave skip_iteration_wave
 	
 	variable iteration
+
 	string g_hist_concat_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat"
-	
-	string g_hist_first_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(starting_iteration)
-	
-	duplicate/o $g_hist_first_wave_name, $g_hist_concat_wave_name
-	
 	Wave g_hist_concat_wave= $g_hist_concat_wave_name
 	
-	for(iteration=starting_iteration+1; iteration<=ending_iteration; iteration+=1)
-		string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+	string g_hist_wave_name
+	
+	for(iteration=starting_iteration; iteration<=ending_iteration; iteration+=1)
+	
+		FindValue/V=(iteration) skip_iteration_wave
 		
-		wave g_hist_wave= $g_hist_wave_name
-		
-		g_hist_concat_wave+= g_hist_wave
+		if(V_value<0)
+			g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+			
+			if(waveexists($g_hist_concat_wave_name))
+				wave g_hist_wave= $g_hist_wave_name
+				Wave g_hist_concat_wave= $g_hist_concat_wave_name
+				
+				g_hist_concat_wave+= g_hist_wave
+			else
+				print g_hist_wave_name
+				
+				duplicate/o $g_hist_wave_name, $g_hist_concat_wave_name
+			endif
+			
+		endif
 	endfor
 
 end
@@ -755,7 +715,7 @@ Function shownextfxn(ca_dose, voltage, g_graph_num, iteration, ending_time)
 	modifygraph/W=$hist_graph hidetrace=1;
 	modifygraph/W=$hist_graph hidetrace($hist_wave_name)=0;
 //	modifygraph/W=$hist_graph hidetrace($hist_wave_fit_name)=0;
-	setaxis/W=$hist_graph/A=2 bottom -200e-12,400e-12;
+	setaxis/W=$hist_graph/A=2 bottom -200e-12,1000e-12;
 	
 //	Make/N=4/O $"W_coef"
 //	Wave coefficients= $"W_coef"
@@ -816,12 +776,6 @@ Function Shownextfxn1(ca_dose, voltage, g_graph_num, starting_iteration,ending_i
 		pauseforuser tmp_PauseforCursor, $hist_graph
 	endfor
 end
-
-Function UserCursorAdjust_ContButtonProc(ctrlName) : ButtonControl
-	String ctrlName
-
-	KillWindow/Z tmp_PauseforCursor				// Kill self
-End
 
 Macro FitIt()
 	string/g trace_name
