@@ -500,7 +500,7 @@ Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, volta
 		if(voltage!=0)
 			min_conductance_delta=abs(min_current_delta/voltage * 1e3)*2.5
 		endif
-		max_conductance= round(1.2e-9/min_conductance_delta)
+		max_conductance= round((1.5e-9+7.5e-10)/min_conductance_delta)
 		
 		for(iteration=starting_iteration; iteration<= ending_iteration; iteration+=1)
 
@@ -544,14 +544,17 @@ Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min
 	string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
 	
 	if(waveexists($i_wave_name))
-	
-		Duplicate/O $i_wave_name, $g_wave_name
-	
-		Wave g_wave= $g_wave_name
+		if(waveexists($g_wave_name))
+			Wave g_wave= $g_wave_name
+		else
+			Duplicate/O $i_wave_name, $g_wave_name
+			
+			Wave g_wave= $g_wave_name
 		
-//		g_wave-= zeromV_avg
-	
-		g_wave=g_wave/(voltage/1000)
+			g_wave-= zeromV_avg
+		
+			g_wave=g_wave/(voltage/1000)
+		endif
 		
 		SetScale d, 0, 0, "S", g_wave
 	
@@ -561,7 +564,7 @@ Function Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min
 		string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
 		
 	
-		Histogram/R=(0.015,ending_time)/B={-2e-10,min_conductance_delta,max_conductance}/DEST=$g_hist_wave_name g_wave
+		Histogram/R=(0.015,ending_time)/B={-7.5e-10,min_conductance_delta,max_conductance}/DEST=$g_hist_wave_name g_wave
 	
 		//Display $g_hist_wave_name
 		
@@ -642,7 +645,7 @@ Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration, ski
 				
 				g_hist_concat_wave+= g_hist_wave
 			else
-				print g_hist_wave_name
+//				print g_hist_wave_name
 				
 				duplicate/o $g_hist_wave_name, $g_hist_concat_wave_name
 			endif
