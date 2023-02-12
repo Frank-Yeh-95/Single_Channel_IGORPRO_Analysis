@@ -28,7 +28,7 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	variable num_sweeps= (ending_voltage-starting_voltage)/voltage_increment+1
 	variable sweep=0
 	
-	string Po_value_wave_name= ca_dose+"_Po_concat_lo"
+	string Po_value_wave_name= ca_dose+"_Po_concat"
 		
 	if(!waveexists($Po_value_wave_name))
 		Make/N=(num_sweeps) /O $Po_value_wave_name
@@ -38,7 +38,7 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	Wave Po_value_wave= $Po_value_wave_name
 	
 	
-	string leak_conductance_wave_name= ca_dose+"_leak_concat_lo"
+	string leak_conductance_wave_name= ca_dose+"_leak_concat"
 	
 	if(!waveexists($leak_conductance_wave_name))		
 		Make/N=(num_sweeps) /O $leak_conductance_wave_name
@@ -58,7 +58,7 @@ Function Po_from_concat_iterate(ca_dose, starting_voltage, ending_voltage, volta
 	Wave leak_conductance_wave= $leak_conductance_wave_name
 	
 	
-	string single_channel_gamma_wave_name= ca_dose+"_single_channel_gamma_concat_lo"
+	string single_channel_gamma_wave_name= ca_dose+"_single_channel_gamma_concat"
 	
 	if(!waveexists($single_channel_gamma_wave_name))
 		Make/N=(num_sweeps) /O $single_channel_gamma_wave_name
@@ -234,7 +234,7 @@ Function Po_automated_area(ca_dose, voltage, iteration, num_channels, sweep)
 //	
 //			print num2str(Po_value)
 	
-			string Po_value_wave_name= ca_dose+"_Po_lo_"+num2str(iteration)
+			string Po_value_wave_name= ca_dose+"_Po_"+num2str(iteration)
 	
 			Wave Po_value_wave= $Po_value_wave_name
 	
