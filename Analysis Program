@@ -636,7 +636,7 @@ Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration, ski
 		g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
 		FindValue/V=(iteration) skip_iteration_wave
 		
-		if(V_value<0 & waveexists($g_hist_wave_name))
+		if(V_value<0 && waveexists($g_hist_wave_name)==1)
 			
 			print g_hist_wave_name
 			
