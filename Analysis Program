@@ -109,8 +109,8 @@ Function Po_from_concat(ca_dose, voltage, num_channels, leak_conductance, single
 	string ca_dose
 	variable voltage, num_channels, leak_conductance, single_channel_gamma
 	
-//	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat"
-	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat_1"
+	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat"
+//	string g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_concat_1"
 	
 	if(waveexists($g_hist_wave_name))
 
@@ -511,7 +511,9 @@ Function Single_channel_iterate(ca_dose, starting_voltage, ending_voltage, volta
 			Single_channel_conductance(ca_dose, voltage, iteration, zeromV_avg, min_conductance_delta, max_conductance, ending_time)
 			
 	//		string i_wave_name= ca_dose+"_"+num2str(voltage)+"mV_"+num2str(iteration)
-			string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+//			string g_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)
+			
+			string g_wave_name= "X"+ca_dose+"_"+num2str(voltage)+"mV_G_"+num2str(iteration)+"_sub"
 			
 			if(iteration==starting_iteration)
 				Display $g_wave_name
@@ -641,6 +643,8 @@ Function Hist_concat(ca_dose, voltage, starting_iteration, ending_iteration, ski
 	
 	for(iteration=starting_iteration; iteration<=ending_iteration; iteration+=1)
 		g_hist_wave_name= ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)
+
+//		g_hist_wave_name= "X"+ca_dose+"_"+num2str(voltage)+"mV_G_Hist_"+num2str(iteration)+"_sub"
 		FindValue/V=(iteration) skip_iteration_wave
 		
 //		print g_hist_wave_name
